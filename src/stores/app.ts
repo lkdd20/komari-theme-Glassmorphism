@@ -3,7 +3,7 @@ import type { MeInfo, PublicSettings } from '@/utils/api'
 import type { ByteDecimalsConfig } from '@/utils/helper'
 import { useStorageAsync } from '@vueuse/core'
 import { defineStore } from 'pinia'
-import { computed, onScopeDispose, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { getAuthSession, requirePermission, setAuthSessionFromLogin, verifyLogin } from '@/services/auth.service'
 
 export type ThemeMode = 'auto' | 'light' | 'dark'
@@ -835,6 +835,37 @@ function parsePingTaskIds(raw: unknown, max = THREE_NET_PING_TASK_LIMIT): number
   return ids
 }
 
+function parseThreeNetPingNodeTaskBindings(raw: unknown): Record<string, number[]> {
+  let value: unknown = raw
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed)
+      return {}
+    try {
+      value = JSON.parse(trimmed) as unknown
+    }
+    catch {
+      return {}
+    }
+  }
+
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return {}
+
+  const bindings: Record<string, number[]> = {}
+  for (const [nodeKey, rawBinding] of Object.entries(value)) {
+    const normalizedNodeKey = nodeKey.trim()
+    if (!normalizedNodeKey)
+      continue
+
+    const taskIds = parsePingTaskIds(rawBinding)
+    if (taskIds.length > 0)
+      bindings[normalizedNodeKey] = taskIds
+  }
+
+  return bindings
+}
+
 function resolveBackgroundSource(value: unknown): string {
   if (typeof value !== 'string')
     return ''
@@ -1231,6 +1262,16 @@ const useAppStore = defineStore('app', () => {
 
   const threeNetPingTaskIds = computed<number[]>(() => parsePingTaskIds(themeSettings.value.threeNetPingTaskIds))
 
+  const threeNetPingNodeTaskBindings = computed<Record<string, number[]>>(() => parseThreeNetPingNodeTaskBindings(themeSettings.value.threeNetPingNodeTaskBindings))
+
+  const threeNetPingMaxTaskCount = computed<number>(() => {
+    let maxCount = threeNetPingTaskIds.value.length
+    for (const binding of Object.values(threeNetPingNodeTaskBindings.value)) {
+      maxCount = Math.max(maxCount, binding.length)
+    }
+    return maxCount
+  })
+
   const chartDashboardTemplate = computed<ChartDashboardTemplate>(() => {
     const settings = themeSettings.value
 
@@ -1284,22 +1325,7 @@ const useAppStore = defineStore('app', () => {
     return 'image'
   })
 
-  const viewportOrientation = ref<BackgroundOrientation>(getViewportOrientation())
-
-  function updateViewportOrientation() {
-    const nextOrientation = getViewportOrientation()
-    if (nextOrientation !== viewportOrientation.value)
-      viewportOrientation.value = nextOrientation
-  }
-
-  if (typeof window !== 'undefined') {
-    window.addEventListener('resize', updateViewportOrientation)
-    window.addEventListener('orientationchange', updateViewportOrientation)
-    onScopeDispose(() => {
-      window.removeEventListener('resize', updateViewportOrientation)
-      window.removeEventListener('orientationchange', updateViewportOrientation)
-    })
-  }
+  const initialViewportOrientation = getViewportOrientation()
 
   const backgroundOrientationMode = computed<BackgroundOrientationMode>(() => {
     const mode = themeSettings.value.backgroundOrientationMode
@@ -1308,7 +1334,7 @@ const useAppStore = defineStore('app', () => {
 
   const resolvedBackgroundOrientation = computed<BackgroundOrientation>(() => {
     const mode = backgroundOrientationMode.value
-    return mode === 'auto' ? viewportOrientation.value : mode
+    return mode === 'auto' ? initialViewportOrientation : mode
   })
 
   const pickConfiguredBackground = (mode: 'light' | 'dark', orientation?: BackgroundOrientation): string => {
@@ -1480,6 +1506,8 @@ const useAppStore = defineStore('app', () => {
     threeNetPingEnabled,
     threeNetPingSparkline,
     threeNetPingTaskIds,
+    threeNetPingNodeTaskBindings,
+    threeNetPingMaxTaskCount,
     chartDashboardTemplate,
     hideAdminEntryWhenLoggedOut,
     hidePriceWhenLoggedOut,

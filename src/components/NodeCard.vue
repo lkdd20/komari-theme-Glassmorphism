@@ -328,11 +328,25 @@ function hasRegion(region: string | null | undefined): boolean {
     </template>
 
     <template #default>
-      <div class="relative flex flex-col overflow-hidden" :class="nodeCardContentClass">
+      <div
+        data-node-card-content
+        class="node-card-content relative flex flex-col"
+        :class="[nodeCardContentClass, !props.node.online && 'node-card-content--offline']"
+      >
         <!-- 在线天数固定展示，价格独立展示，避免不同主机卡片高度不一致 -->
-        <div class="relative z-20 flex items-center gap-1.5 -mt-1 h-[19px] overflow-hidden">
-          <span class="shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-slate-500/10 text-muted-foreground leading-tight">
+        <div class="node-card-status-row relative z-20 flex items-center gap-1.5 -mt-1 h-[19px] overflow-hidden">
+          <span
+            v-if="props.node.online"
+            class="shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-slate-500/10 text-muted-foreground leading-tight"
+          >
             {{ uptimeDaysText }}
+          </span>
+          <span
+            v-else
+            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-destructive/20 bg-destructive/10 px-2 py-0.5 text-[11px] leading-tight text-destructive"
+          >
+            <Icon icon="tabler:cloud-off" width="11" height="11" />
+            离线
           </span>
           <span
             v-if="priceText"
@@ -520,15 +534,14 @@ function hasRegion(region: string | null | undefined): boolean {
         <!-- 延迟 + 丢包：默认总览一行；开启三网后每条线路一行。新版 Sparkline 由 threeNetPingSparkline 控制。 -->
         <div
           :data-three-net-ping="threeNetPingVisible ? '' : undefined"
-          class="flex flex-col"
-          :class="[pingSparklineStyle ? 'gap-1' : 'gap-1.5', pingSparklineStyle && !props.node.online && 'opacity-50']"
+          :class="[pingSparklineStyle ? 'ping-sparkline-list gap-y-1' : 'flex flex-col gap-1.5', pingSparklineStyle && !props.node.online && 'opacity-50']"
         >
           <template v-if="pingSparklineStyle">
             <button
               v-for="row in pingPanelRows"
               :key="row.key"
               type="button"
-              class="ping-sparkline-row group/ping grid min-h-5 min-w-0 grid-cols-[auto_minmax(0,max-content)_max-content_minmax(3.5rem,1fr)_max-content] items-center gap-x-1 rounded-md px-0.5 text-left leading-none hover:bg-slate-500/5"
+              class="ping-sparkline-row group/ping min-h-5 min-w-0 items-center rounded-md px-0.5 text-left leading-none hover:bg-slate-500/5"
               :title="`${row.latencyTooltip}\n${row.lossTooltip}`"
               :aria-label="row.ariaLabel"
               @click.stop="emit('pingClick')"
@@ -653,15 +666,15 @@ function hasRegion(region: string | null | undefined): boolean {
           </Badge>
         </div>
 
-        <!-- 离线遮罩 -->
         <div
           v-if="!props.node.online"
-          class="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center rounded-xl bg-white/20 dark:bg-black/20 backdrop-blur-[2px]"
+          data-offline-status
+          class="node-card-offline-status pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center"
         >
           <div class="text-sm font-semibold text-destructive">
             离线
           </div>
-          <div class="text-[11px] text-muted-foreground mt-1">
+          <div class="mt-1 text-[11px] text-muted-foreground">
             {{ offlineTime }}
           </div>
         </div>
@@ -676,9 +689,24 @@ function hasRegion(region: string | null | undefined): boolean {
   overflow: visible;
 }
 
+.node-card-content--offline > :not(.node-card-status-row):not(.node-card-offline-status) {
+  opacity: 0.42;
+  filter: saturate(0.55);
+}
+
+.ping-sparkline-list {
+  display: grid;
+  grid-template-columns: auto minmax(0, max-content) max-content minmax(3.5rem, 1fr) max-content;
+  column-gap: 0.25rem;
+}
+
 .ping-sparkline-row {
-  /* Keep labels compact and give the line the remaining width. */
+  display: grid;
+  grid-column: 1 / -1;
   min-width: 0;
+  column-gap: inherit;
+  grid-template-columns: auto minmax(0, max-content) max-content minmax(3.5rem, 1fr) max-content;
+  grid-template-columns: subgrid;
 }
 
 .ping-loss-cell {
@@ -686,9 +714,13 @@ function hasRegion(region: string | null | undefined): boolean {
 }
 
 @media (max-width: 420px) {
+  .ping-sparkline-list,
   .ping-sparkline-row {
-    column-gap: 0.25rem;
     grid-template-columns: auto minmax(0, max-content) max-content minmax(3rem, 1fr) max-content;
+  }
+
+  .ping-sparkline-row {
+    grid-template-columns: subgrid;
   }
 
   .ping-loss-cell {
